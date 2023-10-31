@@ -16,8 +16,8 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer  # type: ignore[import]
 
-if 'NO_LOCAL_GGUF' not in os.environ:
-    sys.path.insert(1, str(Path(__file__).parent / 'gguf-py' / 'gguf'))
+if "NO_LOCAL_GGUF" not in os.environ:
+    sys.path.insert(1, str(Path(__file__).parent / "gguf-py" / "gguf"))
 import gguf
 
 
@@ -33,31 +33,41 @@ def count_model_parts(dir_model: Path, prefix: str) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert a Falcon model to a GGML compatible file")
+    parser = argparse.ArgumentParser(
+        description="Convert a Falcon model to a GGML compatible file"
+    )
     parser.add_argument(
-        "--vocab-only", action="store_true",
+        "--vocab-only",
+        action="store_true",
         help="extract only the vocab",
     )
     parser.add_argument(
-        "--outfile", type=Path,
+        "--outfile",
+        type=Path,
         help="path to write to; default: based on input",
     )
     parser.add_argument(
-        "model", type=Path,
+        "model",
+        type=Path,
         help="directory containing model file, or model file itself (*.bin)",
     )
     parser.add_argument(
-        "ftype", type=int, choices=[0, 1], default=1, nargs='?',
+        "ftype",
+        type=int,
+        choices=[0, 1],
+        default=1,
+        nargs="?",
         help="output format - use 0 for float32, 1 for float16",
     )
     return parser.parse_args()
+
 
 args = parse_args()
 
 dir_model = args.model
 ftype = args.ftype
 if not dir_model.is_dir():
-    print(f'Error: {args.model} is not a directory', file = sys.stderr)
+    print(f"Error: {args.model} is not a directory", file=sys.stderr)
     sys.exit(1)
 
 # possible tensor data types
@@ -71,9 +81,9 @@ if args.outfile is not None:
     fname_out = args.outfile
 else:
     # output in the same directory as the model by default
-    fname_out = dir_model / f'ggml-model-{ftype_str[ftype]}.gguf'
+    fname_out = dir_model / f"ggml-model-{ftype_str[ftype]}.gguf"
 
-print("gguf: loading model "+dir_model.name)
+print("gguf: loading model " + dir_model.name)
 
 with open(dir_model / "config.json", "r", encoding="utf-8") as f:
     hparams = json.load(f)
@@ -92,7 +102,7 @@ else:
     is_safetensors = False
     num_parts = count_model_parts(dir_model, "pytorch_model-")
 
-ARCH=gguf.MODEL_ARCH.FALCON
+ARCH = gguf.MODEL_ARCH.FALCON
 gguf_writer = gguf.GGUFWriter(fname_out, gguf.MODEL_ARCH_NAMES[ARCH])
 
 print("gguf: get model metadata")
@@ -110,8 +120,8 @@ if n_head_kv is None:
     n_head_kv = hparams.get("n_head_kv", 1)  # old name
 
 gguf_writer.add_name("Falcon")
-gguf_writer.add_context_length(2048) # not in config.json
-gguf_writer.add_tensor_data_layout("jploski") # qkv tensor transform
+gguf_writer.add_context_length(2048)  # not in config.json
+gguf_writer.add_tensor_data_layout("jploski")  # qkv tensor transform
 gguf_writer.add_embedding_length(hparams["hidden_size"])
 gguf_writer.add_feed_forward_length(4 * hparams["hidden_size"])
 gguf_writer.add_block_count(block_count)
@@ -145,19 +155,19 @@ reverse_vocab = {id: encoded_tok for encoded_tok, id in tokenizer.vocab.items()}
 
 for i in range(vocab_size):
     tokens.append(reverse_vocab[i])
-    scores.append(0.0) # dummy
+    scores.append(0.0)  # dummy
     toktypes.append(gguf.TokenType.NORMAL)
 
 gguf_writer.add_token_list(tokens)
 gguf_writer.add_token_scores(scores)
 gguf_writer.add_token_types(toktypes)
 
-special_vocab = gguf.SpecialVocab(dir_model, load_merges = True, n_vocab = len(tokens))
+special_vocab = gguf.SpecialVocab(dir_model, load_merges=True, n_vocab=len(tokens))
 special_vocab.add_to_gguf(gguf_writer)
 
 # TENSORS
 
-tensor_map = gguf.get_tensor_name_map(ARCH,block_count)
+tensor_map = gguf.get_tensor_name_map(ARCH, block_count)
 
 head_dim = hparams["hidden_size"] // n_head
 
@@ -182,7 +192,9 @@ for part_name in part_names:
     if is_safetensors:
         ctx = safe_open(dir_model / part_name, framework="pt", device="cpu")
     else:
-        ctx = contextlib.nullcontext(torch.load(dir_model / part_name, map_location="cpu"))
+        ctx = contextlib.nullcontext(
+            torch.load(dir_model / part_name, map_location="cpu")
+        )
 
     with ctx as model_part:
         for name in model_part.keys():
@@ -205,16 +217,18 @@ for part_name in part_names:
             # ref: https://github.com/jploski/ggml/blob/falcon40b/examples/falcon/convert-hf-to-ggml.py
 
             if "query_key_value" in name:
-                qkv = data.view(n_head_kv, n_head // n_head_kv + 2, head_dim, head_dim * n_head)
-                q = qkv[:, :-2 ].reshape(n_head * head_dim, head_dim * n_head)
+                qkv = data.view(
+                    n_head_kv, n_head // n_head_kv + 2, head_dim, head_dim * n_head
+                )
+                q = qkv[:, :-2].reshape(n_head * head_dim, head_dim * n_head)
                 k = qkv[:, [-2]].reshape(n_head_kv * head_dim, head_dim * n_head)
                 v = qkv[:, [-1]].reshape(n_head_kv * head_dim, head_dim * n_head)
-                data = torch.cat((q,k,v)).reshape_as(data)
+                data = torch.cat((q, k, v)).reshape_as(data)
 
             data = data.squeeze().numpy()
 
             # map tensor names
-            new_name = tensor_map.get_name(name, try_suffixes = (".weight", ".bias"))
+            new_name = tensor_map.get_name(name, try_suffixes=(".weight", ".bias"))
             if new_name is None:
                 print("Can not map tensor '" + name + "'")
                 sys.exit()
@@ -231,10 +245,23 @@ for part_name in part_names:
                 data = data.astype(np.float32)
 
             # if f16 desired, convert any float32 2-dim weight tensors to float16
-            if ftype == 1 and data_dtype == np.float32 and name.endswith(".weight") and n_dims == 2:
+            if (
+                ftype == 1
+                and data_dtype == np.float32
+                and name.endswith(".weight")
+                and n_dims == 2
+            ):
                 data = data.astype(np.float16)
 
-            print(new_name + ", n_dims = " + str(n_dims) + ", " + str(old_dtype) + " --> " + str(data.dtype))
+            print(
+                new_name
+                + ", n_dims = "
+                + str(n_dims)
+                + ", "
+                + str(old_dtype)
+                + " --> "
+                + str(data.dtype)
+            )
 
             gguf_writer.add_tensor(new_name, data)
 

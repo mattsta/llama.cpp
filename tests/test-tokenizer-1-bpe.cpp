@@ -1,16 +1,16 @@
-#include "llama.h"
 #include "common.h"
-#include "unicode.h"
 #include "console.h"
+#include "llama.h"
+#include "unicode.h"
 
 #include <cassert>
+#include <codecvt>
 #include <cstdio>
 #include <cstring>
-#include <string>
-#include <codecvt>
-#include <map>
-#include <vector>
 #include <locale>
+#include <map>
+#include <string>
+#include <vector>
 
 int main(int argc, char **argv) {
     if (argc < 2) {
@@ -22,8 +22,8 @@ int main(int argc, char **argv) {
 
     fprintf(stderr, "%s : reading vocab from: '%s'\n", __func__, fname.c_str());
 
-    llama_model * model;
-    llama_context * ctx;
+    llama_model *model;
+    llama_context *ctx;
 
     llama_backend_init(false);
 
@@ -36,7 +36,8 @@ int main(int argc, char **argv) {
         model = llama_load_model_from_file(fname.c_str(), mparams);
 
         if (model == NULL) {
-            fprintf(stderr, "%s: error: failed to load vocab '%s'\n", __func__, fname.c_str());
+            fprintf(stderr, "%s: error: failed to load vocab '%s'\n", __func__,
+                    fname.c_str());
             return 1;
         }
 
@@ -45,7 +46,8 @@ int main(int argc, char **argv) {
         ctx = llama_new_context_with_model(model, cparams);
 
         if (ctx == NULL) {
-            fprintf(stderr, "%s: error: failed to load vocab '%s'\n", __func__, fname.c_str());
+            fprintf(stderr, "%s: error: failed to load vocab '%s'\n", __func__,
+                    fname.c_str());
             llama_free_model(model);
             return 1;
         }
@@ -68,25 +70,35 @@ int main(int argc, char **argv) {
             std::vector<llama_token> tokens = llama_tokenize(ctx, str, false);
             std::string check = llama_detokenize_bpe(ctx, tokens);
             if (check != str) {
-                fprintf(stderr, "%s : error: token %d detokenizes to '%s'(%zu) but tokenization of this detokenizes to '%s'(%zu)\n",
-                    __func__, i, str.c_str(), str.length(), check.c_str(), check.length());
+                fprintf(stderr,
+                        "%s : error: token %d detokenizes to '%s'(%zu) but "
+                        "tokenization of this detokenizes to '%s'(%zu)\n",
+                        __func__, i, str.c_str(), str.length(), check.c_str(),
+                        check.length());
                 return 2;
             }
-        }
-        catch (const std::invalid_argument &) {
-            fprintf(stderr, "%s : info: utf8 conversion %d '%s'\n", __func__, i, str.c_str());
+        } catch (const std::invalid_argument &) {
+            fprintf(stderr, "%s : info: utf8 conversion %d '%s'\n", __func__, i,
+                    str.c_str());
         }
     }
 
     for (uint32_t cp = 0x0000; cp < 0xffff; ++cp) {
-        // NOTE: these exceptions seem to be necessary, because the GPT2 tokenizer doesn't want to interfere with some ASCII control characters
-        if ((cp < 0x03 || cp > 0x05) && cp != 0x0b && cp != 0x11 && (cp < 0x13 || cp > 0x17) && cp != 0x19 && (cp < 0x1c || cp > 0x1e) && (cp < 0xd800 || cp > 0xdfff)) {
+        // NOTE: these exceptions seem to be necessary, because the GPT2
+        // tokenizer doesn't want to interfere with some ASCII control
+        // characters
+        if ((cp < 0x03 || cp > 0x05) && cp != 0x0b && cp != 0x11 &&
+            (cp < 0x13 || cp > 0x17) && cp != 0x19 &&
+            (cp < 0x1c || cp > 0x1e) && (cp < 0xd800 || cp > 0xdfff)) {
             std::string str = " " + codepoint_to_utf8(cp);
             std::vector<llama_token> tokens = llama_tokenize(ctx, str, false);
             std::string check = llama_detokenize_bpe(ctx, tokens);
             if (str != check) {
-                fprintf(stderr, "%s : error: codepoint %x detokenizes to '%s'(%zu) instead of '%s'(%zu)\n",
-                    __func__, cp, check.c_str(), check.length(), str.c_str(), str.length());
+                fprintf(stderr,
+                        "%s : error: codepoint %x detokenizes to '%s'(%zu) "
+                        "instead of '%s'(%zu)\n",
+                        __func__, cp, check.c_str(), check.length(),
+                        str.c_str(), str.length());
                 return 3;
             }
         }
@@ -98,8 +110,11 @@ int main(int argc, char **argv) {
         std::vector<llama_token> tokens = llama_tokenize(ctx, str, false);
         std::string check = llama_detokenize_bpe(ctx, tokens);
         if (str != check) {
-            fprintf(stderr, "%s : error: codepoint %x detokenizes to '%s'(%zu) instead of '%s'(%zu)\n",
-                __func__, cp, check.c_str(), check.length(), str.c_str(), str.length());
+            fprintf(stderr,
+                    "%s : error: codepoint %x detokenizes to '%s'(%zu) instead "
+                    "of '%s'(%zu)\n",
+                    __func__, cp, check.c_str(), check.length(), str.c_str(),
+                    str.length());
             return 4;
         }
     }
@@ -108,8 +123,11 @@ int main(int argc, char **argv) {
         std::vector<llama_token> tokens = llama_tokenize(ctx, str, false);
         std::string check = llama_detokenize_bpe(ctx, tokens);
         if (str != check) {
-            fprintf(stderr, "%s : error: codepoint %x detokenizes to '%s'(%zu) instead of '%s'(%zu)\n",
-                __func__, cp, check.c_str(), check.length(), str.c_str(), str.length());
+            fprintf(stderr,
+                    "%s : error: codepoint %x detokenizes to '%s'(%zu) instead "
+                    "of '%s'(%zu)\n",
+                    __func__, cp, check.c_str(), check.length(), str.c_str(),
+                    str.length());
             return 4;
         }
     }

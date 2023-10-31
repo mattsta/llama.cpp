@@ -16,8 +16,8 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer  # type: ignore[import]
 
-if 'NO_LOCAL_GGUF' not in os.environ:
-    sys.path.insert(1, str(Path(__file__).parent / 'gguf-py' / 'gguf'))
+if "NO_LOCAL_GGUF" not in os.environ:
+    sys.path.insert(1, str(Path(__file__).parent / "gguf-py" / "gguf"))
 import gguf
 
 
@@ -38,19 +38,36 @@ def count_model_parts(dir_model: Path) -> int:
 #   https://huggingface.co/bigscience/bloom-7b1
 #   https://huggingface.co/Langboat/bloom-1b4-zh
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert a Bloom model to a GGML compatible file")
-    parser.add_argument("--vocab-only", action="store_true", help="extract only the vocab")
-    parser.add_argument("--outfile",    type=Path,           help="path to write to; default: based on input")
-    parser.add_argument("model",        type=Path,           help="directory containing model file, or model file itself (*.bin)")
-    parser.add_argument("ftype",        type=int,            help="output format - use 0 for float32, 1 for float16", choices=[0, 1], default = 1)
+    parser = argparse.ArgumentParser(
+        description="Convert a Bloom model to a GGML compatible file"
+    )
+    parser.add_argument(
+        "--vocab-only", action="store_true", help="extract only the vocab"
+    )
+    parser.add_argument(
+        "--outfile", type=Path, help="path to write to; default: based on input"
+    )
+    parser.add_argument(
+        "model",
+        type=Path,
+        help="directory containing model file, or model file itself (*.bin)",
+    )
+    parser.add_argument(
+        "ftype",
+        type=int,
+        help="output format - use 0 for float32, 1 for float16",
+        choices=[0, 1],
+        default=1,
+    )
     return parser.parse_args()
+
 
 args = parse_args()
 
 dir_model = args.model
 ftype = args.ftype
 if not dir_model.is_dir():
-    print(f'Error: {args.model} is not a directory', file = sys.stderr)
+    print(f"Error: {args.model} is not a directory", file=sys.stderr)
     sys.exit(1)
 
 # possible tensor data types
@@ -64,9 +81,9 @@ if args.outfile is not None:
     fname_out = args.outfile
 else:
     # output in the same directory as the model by default
-    fname_out = dir_model / f'ggml-model-{ftype_str[ftype]}.gguf'
+    fname_out = dir_model / f"ggml-model-{ftype_str[ftype]}.gguf"
 
-print("gguf: loading model "+dir_model.name)
+print("gguf: loading model " + dir_model.name)
 
 with open(dir_model / "config.json", "r", encoding="utf-8") as f:
     hparams = json.load(f)
@@ -78,7 +95,7 @@ if hparams["architectures"][0] != "BloomForCausalLM":
 # get number of model parts
 num_parts = count_model_parts(dir_model)
 
-ARCH=gguf.MODEL_ARCH.BLOOM
+ARCH = gguf.MODEL_ARCH.BLOOM
 gguf_writer = gguf.GGUFWriter(fname_out, gguf.MODEL_ARCH_NAMES[ARCH])
 
 print("gguf: get model metadata")
@@ -138,7 +155,7 @@ for i in range(vocab_size):
 gguf_writer.add_token_list(tokens)
 gguf_writer.add_token_types(toktypes)
 
-special_vocab = gguf.SpecialVocab(dir_model, load_merges=True, n_vocab = len(tokens))
+special_vocab = gguf.SpecialVocab(dir_model, load_merges=True, n_vocab=len(tokens))
 special_vocab.add_to_gguf(gguf_writer)
 
 # TENSORS
@@ -166,12 +183,15 @@ for part_name in part_names:
     model_part = torch.load(dir_model / part_name, map_location="cpu")
 
     has_lm_head = True
-    if "lm_head.weight" not in model_part.keys() and "output.weight" not in model_part.keys():
+    if (
+        "lm_head.weight" not in model_part.keys()
+        and "output.weight" not in model_part.keys()
+    ):
         has_lm_head = False
 
     for original_name in model_part.keys():
         data = model_part[original_name]
-        name = re.sub(r'transformer\.', '', original_name)
+        name = re.sub(r"transformer\.", "", original_name)
 
         old_dtype = data.dtype
 
@@ -187,19 +207,23 @@ for part_name in part_names:
             # gpt-2: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py#L312  # noqa
             qkv_weights = data.reshape((n_head, 3, n_embed // n_head, n_embed))
             data = np.concatenate(
-                (qkv_weights[:, 0, :, :].reshape((-1, n_embed)),
-                 qkv_weights[:, 1, :, :].reshape((-1, n_embed)),
-                 qkv_weights[:, 2, :, :].reshape((-1, n_embed))),
-                axis=0
+                (
+                    qkv_weights[:, 0, :, :].reshape((-1, n_embed)),
+                    qkv_weights[:, 1, :, :].reshape((-1, n_embed)),
+                    qkv_weights[:, 2, :, :].reshape((-1, n_embed)),
+                ),
+                axis=0,
             )
             print("re-format attention.linear_qkv.weight")
         elif re.match(r"h\.\d+\.self_attention\.query_key_value\.bias", name):
             qkv_bias = data.reshape((n_head, 3, n_embed // n_head))
             data = np.concatenate(
-                (qkv_bias[:, 0, :].reshape((n_embed,)),
-                 qkv_bias[:, 1, :].reshape((n_embed,)),
-                 qkv_bias[:, 2, :].reshape((n_embed,))),
-                axis=0
+                (
+                    qkv_bias[:, 0, :].reshape((n_embed,)),
+                    qkv_bias[:, 1, :].reshape((n_embed,)),
+                    qkv_bias[:, 2, :].reshape((n_embed,)),
+                ),
+                axis=0,
             )
             print("re-format attention.linear_qkv.bias")
 
@@ -221,16 +245,41 @@ for part_name in part_names:
             data = data.astype(np.float32)
 
         # if f16 desired, convert any float32 2-dim weight tensors to float16
-        if ftype == 1 and data_dtype == np.float32 and name.endswith(".weight") and n_dims == 2:
+        if (
+            ftype == 1
+            and data_dtype == np.float32
+            and name.endswith(".weight")
+            and n_dims == 2
+        ):
             data = data.astype(np.float16)
 
-        print(name, "=>", new_name + ", shape = " + str(data.shape) + ", " + str(old_dtype) + " --> " + str(data.dtype))
+        print(
+            name,
+            "=>",
+            new_name
+            + ", shape = "
+            + str(data.shape)
+            + ", "
+            + str(old_dtype)
+            + " --> "
+            + str(data.dtype),
+        )
 
         gguf_writer.add_tensor(new_name, data)
 
         if not has_lm_head and name == "word_embeddings.weight":
             gguf_writer.add_tensor("output.weight", data)
-            print(name, "=>", "output.weight" + ", shape = " + str(data.shape) + ", " + str(old_dtype) + " --> " + str(data.dtype))  # noqa
+            print(
+                name,
+                "=>",
+                "output.weight"
+                + ", shape = "
+                + str(data.shape)
+                + ", "
+                + str(old_dtype)
+                + " --> "
+                + str(data.dtype),
+            )  # noqa
 
 
 print("gguf: write header")

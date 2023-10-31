@@ -17,6 +17,7 @@ if "NO_LOCAL_GGUF" not in os.environ:
     sys.path.insert(1, str(Path(__file__).parent / "gguf-py" / "gguf"))
 import gguf
 
+
 def count_model_parts(dir_model: Path) -> int:
     num_parts = 0
     for filename in os.listdir(dir_model):
@@ -159,7 +160,7 @@ for i in range(vocab_size):
 gguf_writer.add_token_list(tokens)
 gguf_writer.add_token_types(toktypes)
 
-special_vocab = gguf.SpecialVocab(dir_model, load_merges=True, n_vocab = len(tokens))
+special_vocab = gguf.SpecialVocab(dir_model, load_merges=True, n_vocab=len(tokens))
 special_vocab.add_to_gguf(gguf_writer)
 
 # TENSORS

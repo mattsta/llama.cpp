@@ -8,23 +8,23 @@
 #include <string>
 #include <vector>
 
-#define SPEC_VOCAB_MAX_SIZE_DIFFERENCE  100
+#define SPEC_VOCAB_MAX_SIZE_DIFFERENCE 100
 #define SPEC_VOCAB_CHECK_START_TOKEN_ID 5
 
 struct seq_draft {
-    bool active   = false;
+    bool active = false;
     bool drafting = false;
-    bool skip     = false;
+    bool skip = false;
 
     int i_batch_dft = 0;
     std::vector<int> i_batch_tgt;
 
     std::vector<llama_token> tokens;
 
-    struct llama_sampling_context * ctx_sampling;
+    struct llama_sampling_context *ctx_sampling;
 };
 
-int main(int argc, char ** argv) {
+int main(int argc, char **argv) {
     gpt_params params;
 
     if (gpt_params_parse(argc, argv, params) == false) {
@@ -41,7 +41,7 @@ int main(int argc, char ** argv) {
 
     // TODO: make this configurable
     const float p_accept = 0.80f;
-    const float p_split  = 0.10f;
+    const float p_split = 0.10f;
 
 #ifndef LOG_DISABLE_LOGS
     log_set_target(log_filename_generator("speculative", "log"));
@@ -52,11 +52,11 @@ int main(int argc, char ** argv) {
     // init llama.cpp
     llama_backend_init(params.numa);
 
-    llama_model * model_tgt = NULL;
-    llama_model * model_dft = NULL;
+    llama_model *model_tgt = NULL;
+    llama_model *model_dft = NULL;
 
-    llama_context * ctx_tgt = NULL;
-    llama_context * ctx_dft = NULL;
+    llama_context *ctx_tgt = NULL;
+    llama_context *ctx_dft = NULL;
 
     // load the target model
     params.logits_all = true;
@@ -70,24 +70,35 @@ int main(int argc, char ** argv) {
     {
         const int n_vocab_tgt = llama_n_vocab(model_tgt);
         const int n_vocab_dft = llama_n_vocab(model_dft);
-        const int vocab_diff  = n_vocab_tgt > n_vocab_dft
-            ? n_vocab_tgt - n_vocab_dft
-            : n_vocab_dft - n_vocab_tgt;
+        const int vocab_diff = n_vocab_tgt > n_vocab_dft
+                                   ? n_vocab_tgt - n_vocab_dft
+                                   : n_vocab_dft - n_vocab_tgt;
 
         if (vocab_diff > SPEC_VOCAB_MAX_SIZE_DIFFERENCE) {
-            fprintf(stderr, "%s: error: draft model vocab must closely match target model to use speculation but ", __func__);
-            fprintf(stderr, "target vocab size %d does not match draft vocab size %d - difference %d, max allowed %d\n",
-                    n_vocab_tgt, llama_n_vocab(model_dft), vocab_diff, SPEC_VOCAB_MAX_SIZE_DIFFERENCE);
+            fprintf(stderr,
+                    "%s: error: draft model vocab must closely match target "
+                    "model to use speculation but ",
+                    __func__);
+            fprintf(stderr,
+                    "target vocab size %d does not match draft vocab size %d - "
+                    "difference %d, max allowed %d\n",
+                    n_vocab_tgt, llama_n_vocab(model_dft), vocab_diff,
+                    SPEC_VOCAB_MAX_SIZE_DIFFERENCE);
             return 1;
         }
 
-        for (int i = SPEC_VOCAB_CHECK_START_TOKEN_ID; i < std::min(n_vocab_tgt, n_vocab_dft); ++i) {
-            const char * token_text_tgt = llama_token_get_text(model_tgt, i);
-            const char * token_text_dft = llama_token_get_text(model_dft, i);
+        for (int i = SPEC_VOCAB_CHECK_START_TOKEN_ID;
+             i < std::min(n_vocab_tgt, n_vocab_dft); ++i) {
+            const char *token_text_tgt = llama_token_get_text(model_tgt, i);
+            const char *token_text_dft = llama_token_get_text(model_dft, i);
             if (std::strcmp(token_text_tgt, token_text_dft) != 0) {
-                fprintf(stderr, "%s: error: draft model vocab must match target model to use speculation but ", __func__);
-                fprintf(stderr, "token %d content differs - target '%s', draft '%s'\n", i,
-                        llama_token_to_piece(ctx_tgt, i).c_str(),
+                fprintf(stderr,
+                        "%s: error: draft model vocab must match target model "
+                        "to use speculation but ",
+                        __func__);
+                fprintf(stderr,
+                        "token %d content differs - target '%s', draft '%s'\n",
+                        i, llama_token_to_piece(ctx_tgt, i).c_str(),
                         llama_token_to_piece(ctx_dft, i).c_str());
                 return 1;
             }
@@ -98,11 +109,12 @@ int main(int argc, char ** argv) {
     std::vector<llama_token> inp;
     inp = ::llama_tokenize(ctx_tgt, params.prompt, true);
 
-    const int max_context_size     = llama_n_ctx(ctx_tgt);
+    const int max_context_size = llama_n_ctx(ctx_tgt);
     const int max_tokens_list_size = max_context_size - 4;
 
-    if ((int) inp.size() > max_tokens_list_size) {
-        fprintf(stderr, "%s: error: prompt too long (%d tokens, max %d)\n", __func__, (int) inp.size(), max_tokens_list_size);
+    if ((int)inp.size() > max_tokens_list_size) {
+        fprintf(stderr, "%s: error: prompt too long (%d tokens, max %d)\n",
+                __func__, (int)inp.size(), max_tokens_list_size);
         return 1;
     }
 
@@ -119,21 +131,21 @@ int main(int argc, char ** argv) {
     const auto t_enc_start = ggml_time_us();
 
     // eval the prompt with both models
-    llama_decode(ctx_tgt, llama_batch_get_one( inp.data(), n_input - 1, 0,           0));
-    llama_decode(ctx_tgt, llama_batch_get_one(&inp.back(),           1, n_input - 1, 0));
-    llama_decode(ctx_dft, llama_batch_get_one( inp.data(), n_input,     0,           0));
+    llama_decode(ctx_tgt, llama_batch_get_one(inp.data(), n_input - 1, 0, 0));
+    llama_decode(ctx_tgt, llama_batch_get_one(&inp.back(), 1, n_input - 1, 0));
+    llama_decode(ctx_dft, llama_batch_get_one(inp.data(), n_input, 0, 0));
 
     const auto t_enc_end = ggml_time_us();
 
     // the 2 models should have the same vocab
-    //GGML_ASSERT(n_vocab == llama_n_vocab(model_dft));
+    // GGML_ASSERT(n_vocab == llama_n_vocab(model_dft));
 
     // how many tokens to draft each time
     int n_draft = params.n_draft;
 
     int n_predict = 0;
     int n_drafted = 0;
-    int n_accept  = 0;
+    int n_accept = 0;
 
     int n_past_tgt = inp.size();
     int n_past_dft = inp.size();
@@ -142,13 +154,16 @@ int main(int argc, char ** argv) {
     bool has_eos = false;
 
     // target model sampling context
-    struct llama_sampling_context * ctx_sampling = llama_sampling_init(params.sparams);
+    struct llama_sampling_context *ctx_sampling =
+        llama_sampling_init(params.sparams);
 
     // draft sequence data
     std::vector<seq_draft> drafts(n_seq_dft);
 
-    params.sparams.grammar.clear(); // the draft samplers will copy the target sampler's grammar
-    params.sparams.temp = -1.0f;    // force greedy sampling with probs for the draft model
+    params.sparams.grammar
+        .clear(); // the draft samplers will copy the target sampler's grammar
+    params.sparams.temp =
+        -1.0f; // force greedy sampling with probs for the draft model
 
     for (int s = 0; s < n_seq_dft; ++s) {
         drafts[s].ctx_sampling = llama_sampling_init(params.sparams);
@@ -170,23 +185,28 @@ int main(int argc, char ** argv) {
                 continue;
             }
 
-            const auto & tokens = drafts[s].tokens;
+            const auto &tokens = drafts[s].tokens;
 
-            LOG("draft %d: %s\n", s, LOG_TOKENS_TOSTR_PRETTY(ctx_dft, tokens).c_str());
+            LOG("draft %d: %s\n", s,
+                LOG_TOKENS_TOSTR_PRETTY(ctx_dft, tokens).c_str());
         }
 
-        int i_dft  = 0;
+        int i_dft = 0;
         int s_keep = 0;
 
         while (true) {
-            LOG("sampling target: s_keep = %3d, i_dft = %3d, i_batch_tgt = %3d\n", s_keep, i_dft, drafts[s_keep].i_batch_tgt[i_dft]);
+            LOG("sampling target: s_keep = %3d, i_dft = %3d, i_batch_tgt = "
+                "%3d\n",
+                s_keep, i_dft, drafts[s_keep].i_batch_tgt[i_dft]);
 
             // sample from the target model
-            llama_token id = llama_sampling_sample(ctx_sampling, ctx_tgt, NULL, drafts[s_keep].i_batch_tgt[i_dft]);
+            llama_token id = llama_sampling_sample(
+                ctx_sampling, ctx_tgt, NULL, drafts[s_keep].i_batch_tgt[i_dft]);
 
             llama_sampling_accept(ctx_sampling, ctx_tgt, id, true);
 
-            //LOG("last: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx_tgt, ctx_sampling->prev).c_str());
+            // LOG("last: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx_tgt,
+            // ctx_sampling->prev).c_str());
 
             const std::string token_str = llama_token_to_piece(ctx_tgt, id);
 
@@ -208,8 +228,11 @@ int main(int argc, char ** argv) {
                         continue;
                     }
 
-                    if (i_dft < (int) drafts[s].tokens.size() && id == drafts[s].tokens[i_dft]) {
-                        LOG("the sampled target token matches the %dth drafted token of sequence %d (%d, '%s') - accepted\n", i_dft, s, id, token_str.c_str());
+                    if (i_dft < (int)drafts[s].tokens.size() &&
+                        id == drafts[s].tokens[i_dft]) {
+                        LOG("the sampled target token matches the %dth drafted "
+                            "token of sequence %d (%d, '%s') - accepted\n",
+                            i_dft, s, id, token_str.c_str());
 
                         s_keep = s;
                         matches = true;
@@ -228,19 +251,22 @@ int main(int argc, char ** argv) {
                 }
             }
 
-            LOG("the sampled target token (%d, '%s') did not match, or we ran out of drafted tokens\n", id, token_str.c_str());
+            LOG("the sampled target token (%d, '%s') did not match, or we ran "
+                "out of drafted tokens\n",
+                id, token_str.c_str());
 
             // TODO: simplify
             {
-                LOG("keeping sequence %d, n_past_tgt = %d, n_past_dft = %d\n", s_keep, n_past_tgt, n_past_dft);
+                LOG("keeping sequence %d, n_past_tgt = %d, n_past_dft = %d\n",
+                    s_keep, n_past_tgt, n_past_dft);
 
                 llama_kv_cache_seq_keep(ctx_dft, s_keep);
-                llama_kv_cache_seq_cp  (ctx_dft, s_keep, 0, -1, -1);
+                llama_kv_cache_seq_cp(ctx_dft, s_keep, 0, -1, -1);
                 llama_kv_cache_seq_keep(ctx_dft, 0);
 
-                llama_kv_cache_seq_rm  (ctx_tgt, s_keep, n_past_tgt, -1);
+                llama_kv_cache_seq_rm(ctx_tgt, s_keep, n_past_tgt, -1);
                 llama_kv_cache_seq_keep(ctx_tgt, s_keep);
-                llama_kv_cache_seq_cp  (ctx_tgt, s_keep, 0, -1, -1);
+                llama_kv_cache_seq_cp(ctx_tgt, s_keep, 0, -1, -1);
                 llama_kv_cache_seq_keep(ctx_tgt, 0);
             }
 
@@ -254,11 +280,12 @@ int main(int argc, char ** argv) {
             drafts[0].i_batch_tgt.push_back(0);
 
             llama_batch_clear(batch_dft);
-            llama_batch_add  (batch_dft, id, n_past_dft, { 0 }, true);
+            llama_batch_add(batch_dft, id, n_past_dft, {0}, true);
 
             llama_kv_cache_seq_rm(ctx_dft, 0, n_past_dft, -1);
-            // LOG("dft batch: %s\n", LOG_BATCH_TOSTR_PRETTY(ctx_dft, batch_dft).c_str());
-            llama_decode         (ctx_dft, batch_dft);
+            // LOG("dft batch: %s\n", LOG_BATCH_TOSTR_PRETTY(ctx_dft,
+            // batch_dft).c_str());
+            llama_decode(ctx_dft, batch_dft);
 
             ++n_past_dft;
 
@@ -271,19 +298,19 @@ int main(int argc, char ** argv) {
 
         llama_sampling_cp(ctx_sampling, drafts[0].ctx_sampling);
 
-        int n_seq_cur  = 1;
+        int n_seq_cur = 1;
         int n_past_cur = n_past_dft;
 
         for (int s = 0; s < n_seq_dft; ++s) {
-            drafts[s].active   = false;
+            drafts[s].active = false;
             drafts[s].drafting = false;
         }
-        drafts[0].active      = true;
-        drafts[0].drafting    = true;
+        drafts[0].active = true;
+        drafts[0].drafting = true;
         drafts[0].i_batch_dft = 0;
 
         llama_batch_clear(batch_tgt);
-        llama_batch_add  (batch_tgt, drafts[0].tokens[0], n_past_tgt, { 0 }, true);
+        llama_batch_add(batch_tgt, drafts[0].tokens[0], n_past_tgt, {0}, true);
 
         // sample n_draft tokens from the draft model using tree-based sampling
         for (int i = 0; i < n_draft; ++i) {
@@ -298,17 +325,23 @@ int main(int argc, char ** argv) {
                     continue;
                 }
 
-                llama_sampling_sample(drafts[s].ctx_sampling, ctx_dft, NULL, drafts[s].i_batch_dft);
+                llama_sampling_sample(drafts[s].ctx_sampling, ctx_dft, NULL,
+                                      drafts[s].i_batch_dft);
 
-                const auto & cur_p = drafts[s].ctx_sampling->cur;
+                const auto &cur_p = drafts[s].ctx_sampling->cur;
 
-                for (int k = 0; k < std::min(n_seq_dft + 3, (int) cur_p.size()); ++k) {
-                    LOG(" - draft candidate %3d for seq %3d, pos %3d: %6d (%8.3f) '%s'\n",
-                            k, s, i, cur_p[k].id, cur_p[k].p, llama_token_to_piece(ctx_dft, cur_p[k].id).c_str());
+                for (int k = 0; k < std::min(n_seq_dft + 3, (int)cur_p.size());
+                     ++k) {
+                    LOG(" - draft candidate %3d for seq %3d, pos %3d: %6d "
+                        "(%8.3f) '%s'\n",
+                        k, s, i, cur_p[k].id, cur_p[k].p,
+                        llama_token_to_piece(ctx_dft, cur_p[k].id).c_str());
                 }
 
                 if (cur_p[0].p < p_accept) {
-                    LOG("stopping drafting for seq %3d, probability too low: %.3f < %.3f\n", s, cur_p[0].p, p_accept);
+                    LOG("stopping drafting for seq %3d, probability too low: "
+                        "%.3f < %.3f\n",
+                        s, cur_p[0].p, p_accept);
                     drafts[s].drafting = false;
                     continue;
                 }
@@ -320,14 +353,16 @@ int main(int argc, char ** argv) {
                     if (n_seq_cur < n_seq_dft && cur_p[f].p > p_split) {
                         LOG("splitting seq %3d into %3d\n", s, n_seq_cur);
 
-                        llama_kv_cache_seq_rm(ctx_dft,    n_seq_cur, -1, -1);
+                        llama_kv_cache_seq_rm(ctx_dft, n_seq_cur, -1, -1);
                         llama_kv_cache_seq_cp(ctx_dft, s, n_seq_cur, -1, -1);
 
-                        // all previous tokens from this branch are now also part of the new branch
+                        // all previous tokens from this branch are now also
+                        // part of the new branch
                         for (int t = 0; t < batch_tgt.n_tokens; ++t) {
                             for (int p = 0; p < batch_tgt.n_seq_id[t]; ++p) {
                                 if (batch_tgt.seq_id[t][p] == s) {
-                                    batch_tgt.seq_id[t][batch_tgt.n_seq_id[t]] = n_seq_cur;
+                                    batch_tgt.seq_id[t][batch_tgt.n_seq_id[t]] =
+                                        n_seq_cur;
                                     batch_tgt.n_seq_id[t]++;
                                     break;
                                 }
@@ -335,15 +370,16 @@ int main(int argc, char ** argv) {
                         }
 
                         // copy the draft state
-                        drafts[n_seq_cur].active   = true;
+                        drafts[n_seq_cur].active = true;
                         drafts[n_seq_cur].drafting = true;
-                        drafts[n_seq_cur].skip     = true;
+                        drafts[n_seq_cur].skip = true;
 
-                        drafts[n_seq_cur].tokens      = drafts[s].tokens;
+                        drafts[n_seq_cur].tokens = drafts[s].tokens;
                         drafts[n_seq_cur].i_batch_dft = drafts[s].i_batch_dft;
                         drafts[n_seq_cur].i_batch_tgt = drafts[s].i_batch_tgt;
 
-                        llama_sampling_cp(drafts[s].ctx_sampling, drafts[n_seq_cur].ctx_sampling);
+                        llama_sampling_cp(drafts[s].ctx_sampling,
+                                          drafts[n_seq_cur].ctx_sampling);
 
                         sa.push_back(n_seq_cur);
 
@@ -354,24 +390,27 @@ int main(int argc, char ** argv) {
                 }
 
                 // add drafted token for each sequence
-                for (int is = 0; is < (int) sa.size(); ++is) {
+                for (int is = 0; is < (int)sa.size(); ++is) {
                     const llama_token id = cur_p[is].id;
 
                     const int s = sa[is];
 
-                    llama_sampling_accept(drafts[s].ctx_sampling, ctx_dft, id, true);
+                    llama_sampling_accept(drafts[s].ctx_sampling, ctx_dft, id,
+                                          true);
 
                     drafts[s].tokens.push_back(id);
 
                     // add unique drafted tokens to the target batch
                     drafts[s].i_batch_tgt.push_back(batch_tgt.n_tokens);
 
-                    llama_batch_add(batch_tgt, id, n_past_tgt + i + 1, { s }, true);
+                    llama_batch_add(batch_tgt, id, n_past_tgt + i + 1, {s},
+                                    true);
 
-                    // add the token to the batch for batched decoding with the draft model
+                    // add the token to the batch for batched decoding with the
+                    // draft model
                     drafts[s].i_batch_dft = batch_dft.n_tokens;
 
-                    llama_batch_add(batch_dft, id, n_past_cur, { s }, true);
+                    llama_batch_add(batch_dft, id, n_past_cur, {s}, true);
 
                     if (batch_tgt.n_tokens > n_draft) {
                         drafts[s].drafting = false;
@@ -401,12 +440,14 @@ int main(int argc, char ** argv) {
                 llama_kv_cache_seq_cp(ctx_tgt, 0, s, -1, -1);
             }
 
-            // LOG("target batch: %s\n", LOG_BATCH_TOSTR_PRETTY(ctx_tgt, batch_tgt).c_str());
+            // LOG("target batch: %s\n", LOG_BATCH_TOSTR_PRETTY(ctx_tgt,
+            // batch_tgt).c_str());
             llama_decode(ctx_tgt, batch_tgt);
             ++n_past_tgt;
         }
 
-        // the first token is always proposed by the traget model before the speculation loop so we erase it here
+        // the first token is always proposed by the traget model before the
+        // speculation loop so we erase it here
         for (int s = 0; s < n_seq_dft; ++s) {
             if (!drafts[s].active) {
                 continue;
@@ -420,8 +461,12 @@ int main(int argc, char ** argv) {
 
     LOG_TEE("\n\n");
 
-    LOG_TEE("encoded %4d tokens in %8.3f seconds, speed: %8.3f t/s\n", n_input,   (t_enc_end - t_enc_start) / 1e6f, inp.size() / ((t_enc_end - t_enc_start) / 1e6f));
-    LOG_TEE("decoded %4d tokens in %8.3f seconds, speed: %8.3f t/s\n", n_predict, (t_dec_end - t_dec_start) / 1e6f, n_predict  / ((t_dec_end - t_dec_start) / 1e6f));
+    LOG_TEE("encoded %4d tokens in %8.3f seconds, speed: %8.3f t/s\n", n_input,
+            (t_enc_end - t_enc_start) / 1e6f,
+            inp.size() / ((t_enc_end - t_enc_start) / 1e6f));
+    LOG_TEE("decoded %4d tokens in %8.3f seconds, speed: %8.3f t/s\n",
+            n_predict, (t_dec_end - t_dec_start) / 1e6f,
+            n_predict / ((t_dec_end - t_dec_start) / 1e6f));
 
     LOG_TEE("\n");
     LOG_TEE("n_draft   = %d\n", n_draft);

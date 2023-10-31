@@ -1,9 +1,9 @@
 #include "ggml.h"
 
+#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <cassert>
 
 #define MAX_NARGS 2
 
@@ -35,51 +35,57 @@
 
 #define GGML_PRINT(...) printf(__VA_ARGS__)
 
-
 static float frand(void) {
-    return (float)rand()/(float)RAND_MAX;
+    return (float)rand() / (float)RAND_MAX;
 }
 
-static struct ggml_tensor * get_random_tensor(
-    struct ggml_context * ctx0, int ndims, int64_t ne[], float fmin, float fmax
-) {
-    struct ggml_tensor * result = ggml_new_tensor(ctx0, GGML_TYPE_F32, ndims, ne);
+static struct ggml_tensor *get_random_tensor(struct ggml_context *ctx0,
+                                             int ndims, int64_t ne[],
+                                             float fmin, float fmax) {
+    struct ggml_tensor *result =
+        ggml_new_tensor(ctx0, GGML_TYPE_F32, ndims, ne);
 
     switch (ndims) {
-        case 1:
+    case 1:
+        for (int i0 = 0; i0 < ne[0]; i0++) {
+            ((float *)result->data)[i0] = frand() * (fmax - fmin) + fmin;
+        }
+        break;
+    case 2:
+        for (int i1 = 0; i1 < ne[1]; i1++) {
             for (int i0 = 0; i0 < ne[0]; i0++) {
-                ((float *)result->data)[i0] = frand()*(fmax - fmin) + fmin;
+                ((float *)result->data)[i1 * ne[0] + i0] =
+                    frand() * (fmax - fmin) + fmin;
             }
-            break;
-        case 2:
+        }
+        break;
+    case 3:
+        for (int i2 = 0; i2 < ne[2]; i2++) {
             for (int i1 = 0; i1 < ne[1]; i1++) {
                 for (int i0 = 0; i0 < ne[0]; i0++) {
-                    ((float *)result->data)[i1*ne[0] + i0] = frand()*(fmax - fmin) + fmin;
+                    ((float *)
+                         result->data)[i2 * ne[1] * ne[0] + i1 * ne[0] + i0] =
+                        frand() * (fmax - fmin) + fmin;
                 }
             }
-            break;
-        case 3:
+        }
+        break;
+    case 4:
+        for (int i3 = 0; i3 < ne[3]; i3++) {
             for (int i2 = 0; i2 < ne[2]; i2++) {
                 for (int i1 = 0; i1 < ne[1]; i1++) {
                     for (int i0 = 0; i0 < ne[0]; i0++) {
-                        ((float *)result->data)[i2*ne[1]*ne[0] + i1*ne[0] + i0] = frand()*(fmax - fmin) + fmin;
+                        ((float *)result
+                             ->data)[i3 * ne[2] * ne[1] * ne[0] +
+                                     i2 * ne[1] * ne[0] + i1 * ne[0] + i0] =
+                            frand() * (fmax - fmin) + fmin;
                     }
                 }
             }
-            break;
-        case 4:
-            for (int i3 = 0; i3 < ne[3]; i3++) {
-                for (int i2 = 0; i2 < ne[2]; i2++) {
-                    for (int i1 = 0; i1 < ne[1]; i1++) {
-                        for (int i0 = 0; i0 < ne[0]; i0++) {
-                            ((float *)result->data)[i3*ne[2]*ne[1]*ne[0] + i2*ne[1]*ne[0] + i1*ne[0] + i0] = frand()*(fmax - fmin) + fmin;
-                        }
-                    }
-                }
-            }
-            break;
-        default:
-            assert(false);
+        }
+        break;
+    default:
+        assert(false);
     }
 
     return result;
@@ -87,27 +93,27 @@ static struct ggml_tensor * get_random_tensor(
 
 int main(void) {
     struct ggml_init_params params = {
-        /* .mem_size   = */ 1024*1024*1024,
+        /* .mem_size   = */ 1024 * 1024 * 1024,
         /* .mem_buffer = */ NULL,
         /* .no_alloc   = */ false,
     };
 
-    struct ggml_context * ctx = ggml_init(params);
+    struct ggml_context *ctx = ggml_init(params);
 
     int64_t ne1[4] = {4, 128, 1, 1};
     int64_t ne2[4] = {4, 256, 1, 1};
     int64_t ne3[4] = {128, 256, 1, 1};
 
-    struct ggml_tensor * a = get_random_tensor(ctx, 2, ne1, -1, +1);
-    struct ggml_tensor * b = get_random_tensor(ctx, 2, ne2, -1, +1);
+    struct ggml_tensor *a = get_random_tensor(ctx, 2, ne1, -1, +1);
+    struct ggml_tensor *b = get_random_tensor(ctx, 2, ne2, -1, +1);
     ggml_set_param(ctx, a);
     ggml_set_param(ctx, b);
 
-    struct ggml_tensor * c = get_random_tensor(ctx, 2, ne3, -1, +1);
+    struct ggml_tensor *c = get_random_tensor(ctx, 2, ne3, -1, +1);
 
-    struct ggml_tensor * ab = ggml_mul_mat(ctx, a, b);
-    struct ggml_tensor * d  = ggml_sub(ctx, c, ab);
-    struct ggml_tensor * e  = ggml_sum(ctx, ggml_sqr(ctx, d));
+    struct ggml_tensor *ab = ggml_mul_mat(ctx, a, b);
+    struct ggml_tensor *d = ggml_sub(ctx, c, ab);
+    struct ggml_tensor *e = ggml_sum(ctx, ggml_sqr(ctx, d));
 
     struct ggml_cgraph ge = ggml_build_forward(e);
     ggml_graph_reset(&ge);
@@ -152,7 +158,6 @@ int main(void) {
 // int64_t ne3[4] = {128, 256, 1, 1};
 // main: original  e = 68371.1328
 // main: optimized e = 7854.4502
-
 
 // int64_t ne1[4] = {32, 128, 1, 1};
 // int64_t ne2[4] = {32, 256, 1, 1};;

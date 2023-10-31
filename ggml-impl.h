@@ -5,10 +5,10 @@
 // GGML internal header
 
 #include <assert.h>
-#include <stddef.h>
+#include <math.h> // fabsf
 #include <stdbool.h>
+#include <stddef.h>
 #include <string.h> // memcpy
-#include <math.h>   // fabsf
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,7 +26,8 @@ extern "C" {
 #endif
 #endif
 
-// __FMA__ and __F16C__ are not defined in MSVC, however they are implied with AVX2/AVX512
+// __FMA__ and __F16C__ are not defined in MSVC, however they are implied with
+// AVX2/AVX512
 #if defined(_MSC_VER) && (defined(__AVX2__) || defined(__AVX512F__))
 #ifndef __FMA__
 #define __FMA__
@@ -52,14 +53,16 @@ extern "C" {
 
 // if YCM cannot find <arm_neon.h>, make a symbolic link to it, for example:
 //
-//   $ ln -sfn /Library/Developer/CommandLineTools/usr/lib/clang/13.1.6/include/arm_neon.h ./src/
+//   $ ln -sfn
+//   /Library/Developer/CommandLineTools/usr/lib/clang/13.1.6/include/arm_neon.h
+//   ./src/
 //
 #include <arm_neon.h>
 
-#define GGML_COMPUTE_FP16_TO_FP32(x) ((float) (x))
+#define GGML_COMPUTE_FP16_TO_FP32(x) ((float)(x))
 #define GGML_COMPUTE_FP32_TO_FP16(x) (x)
 
-#define GGML_FP16_TO_FP32(x) ((float) (x))
+#define GGML_FP16_TO_FP32(x) ((float)(x))
 #define GGML_FP32_TO_FP16(x) (x)
 
 #else
@@ -75,7 +78,8 @@ extern "C" {
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #include <intrin.h>
 #else
-#if defined(__AVX__) || defined(__AVX2__) || defined(__AVX512F__) || defined(__SSSE3__) || defined(__SSE3__)
+#if defined(__AVX__) || defined(__AVX2__) || defined(__AVX512F__) ||           \
+    defined(__SSSE3__) || defined(__SSE3__)
 #if !defined(__riscv)
 #include <immintrin.h>
 #endif
@@ -91,8 +95,10 @@ extern "C" {
 #ifdef __F16C__
 
 #ifdef _MSC_VER
-#define GGML_COMPUTE_FP16_TO_FP32(x) _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(x)))
-#define GGML_COMPUTE_FP32_TO_FP16(x) _mm_extract_epi16(_mm_cvtps_ph(_mm_set_ss(x), 0), 0)
+#define GGML_COMPUTE_FP16_TO_FP32(x)                                           \
+    _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(x)))
+#define GGML_COMPUTE_FP32_TO_FP16(x)                                           \
+    _mm_extract_epi16(_mm_cvtps_ph(_mm_set_ss(x), 0), 0)
 #else
 #define GGML_COMPUTE_FP16_TO_FP32(x) _cvtsh_ss(x)
 #define GGML_COMPUTE_FP32_TO_FP16(x) _cvtss_sh(x, 0)
@@ -109,25 +115,28 @@ extern "C" {
 static inline float ggml_compute_fp16_to_fp32(ggml_fp16_t h) {
     register float f;
     register double d;
-    __asm__(
-        "mtfprd %0,%2\n"
-        "xscvhpdp %0,%0\n"
-        "frsp %1,%0\n" :
-        /* temp */ "=d"(d),
-        /* out */  "=f"(f):
-        /* in */   "r"(h));
+    __asm__("mtfprd %0,%2\n"
+            "xscvhpdp %0,%0\n"
+            "frsp %1,%0\n"
+            :
+            /* temp */ "=d"(d),
+            /* out */ "=f"(f)
+            :
+            /* in */ "r"(h));
     return f;
 }
 
 static inline ggml_fp16_t ggml_compute_fp32_to_fp16(float f) {
     register double d;
     register ggml_fp16_t r;
-    __asm__( /* xscvdphp can work on double or single precision */
-        "xscvdphp %0,%2\n"
-        "mffprd %1,%0\n" :
-        /* temp */ "=d"(d),
-        /* out */  "=r"(r):
-        /* in */   "f"(f));
+    __asm__(/* xscvdphp can work on double or single precision */
+            "xscvdphp %0,%2\n"
+            "mffprd %1,%0\n"
+            :
+            /* temp */ "=d"(d),
+            /* out */ "=r"(r)
+            :
+            /* in */ "f"(f));
     return r;
 }
 
@@ -155,30 +164,35 @@ static inline uint32_t fp32_to_bits(float f) {
 }
 
 static inline float ggml_compute_fp16_to_fp32(ggml_fp16_t h) {
-    const uint32_t w = (uint32_t) h << 16;
+    const uint32_t w = (uint32_t)h << 16;
     const uint32_t sign = w & UINT32_C(0x80000000);
     const uint32_t two_w = w + w;
 
     const uint32_t exp_offset = UINT32_C(0xE0) << 23;
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) || defined(__GNUC__) && !defined(__STRICT_ANSI__)
+#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) ||              \
+    defined(__GNUC__) && !defined(__STRICT_ANSI__)
     const float exp_scale = 0x1.0p-112f;
 #else
     const float exp_scale = fp32_from_bits(UINT32_C(0x7800000));
 #endif
-    const float normalized_value = fp32_from_bits((two_w >> 4) + exp_offset) * exp_scale;
+    const float normalized_value =
+        fp32_from_bits((two_w >> 4) + exp_offset) * exp_scale;
 
     const uint32_t magic_mask = UINT32_C(126) << 23;
     const float magic_bias = 0.5f;
-    const float denormalized_value = fp32_from_bits((two_w >> 17) | magic_mask) - magic_bias;
+    const float denormalized_value =
+        fp32_from_bits((two_w >> 17) | magic_mask) - magic_bias;
 
     const uint32_t denormalized_cutoff = UINT32_C(1) << 27;
-    const uint32_t result = sign |
-        (two_w < denormalized_cutoff ? fp32_to_bits(denormalized_value) : fp32_to_bits(normalized_value));
+    const uint32_t result =
+        sign | (two_w < denormalized_cutoff ? fp32_to_bits(denormalized_value)
+                                            : fp32_to_bits(normalized_value));
     return fp32_from_bits(result);
 }
 
 static inline ggml_fp16_t ggml_compute_fp32_to_fp16(float f) {
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) || defined(__GNUC__) && !defined(__STRICT_ANSI__)
+#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) ||              \
+    defined(__GNUC__) && !defined(__STRICT_ANSI__)
     const float scale_to_inf = 0x1.0p+112f;
     const float scale_to_zero = 0x1.0p-110f;
 #else
@@ -200,7 +214,8 @@ static inline ggml_fp16_t ggml_compute_fp32_to_fp16(float f) {
     const uint32_t exp_bits = (bits >> 13) & UINT32_C(0x00007C00);
     const uint32_t mantissa_bits = bits & UINT32_C(0x00000FFF);
     const uint32_t nonsign = exp_bits + mantissa_bits;
-    return (sign >> 16) | (shl1_w > UINT32_C(0xFF000000) ? UINT16_C(0x7E00) : nonsign);
+    return (sign >> 16) |
+           (shl1_w > UINT32_C(0xFF000000) ? UINT16_C(0x7E00) : nonsign);
 }
 
 #define GGML_COMPUTE_FP16_TO_FP32(x) ggml_compute_fp16_to_fp32(x)
@@ -214,9 +229,9 @@ static inline ggml_fp16_t ggml_compute_fp32_to_fp16(float f) {
 // defined in ggml.c, initialized in ggml_init()
 extern float ggml_table_f32_f16[1 << 16];
 
-// On ARM NEON, it's quicker to directly convert x -> x instead of calling into ggml_lookup_fp16_to_fp32,
-// so we define GGML_FP16_TO_FP32 and GGML_FP32_TO_FP16 elsewhere for NEON.
-// This is also true for POWER9.
+// On ARM NEON, it's quicker to directly convert x -> x instead of calling into
+// ggml_lookup_fp16_to_fp32, so we define GGML_FP16_TO_FP32 and
+// GGML_FP32_TO_FP16 elsewhere for NEON. This is also true for POWER9.
 #if !defined(GGML_FP16_TO_FP32) || !defined(GGML_FP32_TO_FP16)
 
 inline static float ggml_lookup_fp16_to_fp32(ggml_fp16_t f) {
@@ -230,7 +245,7 @@ inline static float ggml_lookup_fp16_to_fp32(ggml_fp16_t f) {
 
 #endif
 
-    // TODO: backend v2 PR
+// TODO: backend v2 PR
 
 #ifdef __cplusplus
 }

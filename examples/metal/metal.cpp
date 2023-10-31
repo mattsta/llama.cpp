@@ -9,18 +9,18 @@
 //  $ ./bin/metal llama.ggml
 //
 // The purpose of this tool is mostly for debugging and demonstration purposes.
-// The main limitation of exporting computation graphs is that their sizes are static which often
-// can be a problem for real-world applications.
+// The main limitation of exporting computation graphs is that their sizes are
+// static which often can be a problem for real-world applications.
 //
 
-#include "ggml.h"
 #include "ggml-metal.h"
+#include "ggml.h"
 
 #include <cstdio>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
 
-int main(int argc, char ** argv) {
+int main(int argc, char **argv) {
     ggml_time_init();
 
     if (argc != 2) {
@@ -28,26 +28,29 @@ int main(int argc, char ** argv) {
         return -1;
     }
 
-    const char * fname_cgraph = argv[1];
+    const char *fname_cgraph = argv[1];
 
     // load the compute graph
-    struct ggml_context * ctx_data = NULL;
-    struct ggml_context * ctx_eval = NULL;
+    struct ggml_context *ctx_data = NULL;
+    struct ggml_context *ctx_eval = NULL;
 
-    struct ggml_cgraph gf = ggml_graph_import(fname_cgraph, &ctx_data, &ctx_eval);
+    struct ggml_cgraph gf =
+        ggml_graph_import(fname_cgraph, &ctx_data, &ctx_eval);
 
     // this allocates all Metal resources and memory buffers
-    auto * ctx_metal = ggml_metal_init(1);
+    auto *ctx_metal = ggml_metal_init(1);
 
     const size_t max_size_data = ggml_get_max_tensor_size(ctx_data);
     const size_t max_size_eval = ggml_get_max_tensor_size(ctx_eval);
-    ggml_metal_add_buffer(ctx_metal, "data", ggml_get_mem_buffer(ctx_data), ggml_get_mem_size(ctx_data), max_size_data);
-    ggml_metal_add_buffer(ctx_metal, "eval", ggml_get_mem_buffer(ctx_eval), ggml_get_mem_size(ctx_eval), max_size_eval);
+    ggml_metal_add_buffer(ctx_metal, "data", ggml_get_mem_buffer(ctx_data),
+                          ggml_get_mem_size(ctx_data), max_size_data);
+    ggml_metal_add_buffer(ctx_metal, "eval", ggml_get_mem_buffer(ctx_eval),
+                          ggml_get_mem_size(ctx_eval), max_size_eval);
 
     // main
     {
-        struct ggml_tensor * input = ggml_graph_get_tensor(&gf, "embd");
-        *(int32_t *) input->data = 1; // BOS
+        struct ggml_tensor *input = ggml_graph_get_tensor(&gf, "embd");
+        *(int32_t *)input->data = 1; // BOS
 
         ggml_metal_set_tensor(ctx_metal, input);
 
@@ -65,15 +68,16 @@ int main(int argc, char ** argv) {
 
         const int64_t t1 = ggml_time_us();
 
-        printf("time: %.2f ms, %.2f ms/tok\n", (t1 - t0) / 1000.0, (t1 - t0) / 1000.0 / n_iter);
+        printf("time: %.2f ms, %.2f ms/tok\n", (t1 - t0) / 1000.0,
+               (t1 - t0) / 1000.0 / n_iter);
     }
 
     // debug output
     {
-        struct ggml_tensor * logits = gf.nodes[gf.n_nodes - 1];
+        struct ggml_tensor *logits = gf.nodes[gf.n_nodes - 1];
         ggml_metal_get_tensor(ctx_metal, logits);
 
-        float * ptr = (float *) ggml_get_data(logits);
+        float *ptr = (float *)ggml_get_data(logits);
 
         printf("logits: ");
         for (int i = 0; i < 10; i++) {
@@ -84,7 +88,7 @@ int main(int argc, char ** argv) {
         double sum = 0.0;
         double vmax = -1e9;
         for (int i = 0; i < 32000; i++) {
-            sum += (double) ptr[i];
+            sum += (double)ptr[i];
             if (ptr[i] > vmax) {
                 vmax = ptr[i];
                 imax = i;
@@ -100,4 +104,3 @@ int main(int argc, char ** argv) {
 
     return 0;
 }
-
